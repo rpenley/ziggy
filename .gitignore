@@ -1,3 +1,10 @@
+# Zig build artifacts
+zig-out/
+.zig-cache/
+
+# Ziggy output
+publish/
+
 # Prerequisites
 *.d
 

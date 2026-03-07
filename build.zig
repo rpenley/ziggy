@@ -4,6 +4,8 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const zmd_dep = b.dependency("zmd", .{ .target = target, .optimize = optimize });
+
     const exe = b.addExecutable(.{
         .name = "ziggy",
         .root_module = b.createModule(.{
@@ -12,6 +14,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+    exe.root_module.addImport("zmd", zmd_dep.module("zmd"));
 
     b.installArtifact(exe);
 

@@ -1,0 +1,7 @@
+.{
+.content_dir  = "content",
+.template_dir = "template",
+.static_dir   = "static",
+.publish_dir  = "publish",
+.theme        = "default",
+}
