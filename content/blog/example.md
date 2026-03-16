@@ -1,12 +1,12 @@
 ---
-title: Example
+title: Blog Post Example
 date: 2026-03-07
-description: The first post
+description: Your First Post
 ---
 
 # Markdown Basics
 
-Ziggy uses the [zmd library](https://https://github.com/jetzig-framework/zmd) part of the wonderful [jetzig web framework](https://www.jetzig.dev/) to render markdown into html. It supports all the things you expect such as...
+Ziggy uses the [zmd library](https://https://github.com/jetzig-framework/zmd) part of the wonderful [jetzig web framework](https://www.jetzig.dev/) to parse markdown for us. This allows you to write your blog posts in markdown with support for all the features you would expect such as...
 
 ## Emphasis
 
@@ -15,7 +15,7 @@ You can also combine them: ***bold and italic***.
 
 ## Links
 
-Inline link: [Zig language](https://ziglang.org)
+Inline links: [Zig language](https://ziglang.org)
 
 ## Lists
 
@@ -38,8 +38,6 @@ Ordered:
 ## Code
 
 Inline `code` looks like this.
-
-A fenced code block:
 
 ```zig
 const std = @import("std");

@@ -1,14 +1,13 @@
 ---
 title: Contact
-description: get in touch
+description: Tell people how they can reach you
 ---
 
-## contact
-
+## Contact
 Here you can provide your **email**: your@email.com
 
-### elsewhere
+### Elsewhere
 Then you can provide secondary resources such as 
-*GitHub:* github.com/rpenley
-*Mastodon:* @you@instance.social
+- *GitHub:* github.com/yourgithub
+- *Mastodon:* @you@instance.social
 

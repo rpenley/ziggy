@@ -24,4 +24,15 @@ pub fn build(b: *std.Build) void {
 
     const run_step = b.step("run", "Run ziggy");
     run_step.dependOn(&run_cmd.step);
+
+    const test_exe = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    test_exe.root_module.addImport("zmd", zmd_dep.module("zmd"));
+    const test_step = b.step("test", "Run tests");
+    test_step.dependOn(&b.addRunArtifact(test_exe).step);
 }

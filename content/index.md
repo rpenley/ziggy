@@ -1,14 +1,19 @@
 ---
-title: your name
-description: your description
+title: Name Here
+description: Your description
 ---
 
 # About
-Description of who you are and a list of your interests go here
-insert thing after that to make you seem more human
+Description of who you are and what you do professionally
+Comment about the quirky thing you enjoy so people know you have a personality
 
 ## Projects
-Show off your projects and maybe what you do for a living
+Show off your personal projects 
+- like this
+- and this
+- and maybe this one if it still works
+- make this one up, nobody will check it anyway
 
-### elsewhere
-Tell people about your hobbies and interests and make sure to tell them that your beliefs don't reflect your employer
+### Hobbies
+Tell people about your hobbies and interests outside of work
+make sure to tell them that your beliefs don't reflect your employer
