@@ -1,7 +1,23 @@
 .{
-.content_dir  = "content",
-.template_dir = "template",
-.static_dir   = "static",
-.publish_dir  = "publish",
-.theme        = "default",
+    // Directory containing your Markdown source files.
+    // Subdirectories become content types (e.g. content/blog/ → /blog/*.html).
+    .content_dir = "content",
+
+    // Which template to use. Ziggy looks for this folder under templates/.
+    // e.g. "default" → templates/default/
+    // The template folder contains .mustache files, a partials/ subdirectory,
+    // and any static assets (CSS, JS, images) to copy to the output.
+    .template = "default",
+
+    // Output directory where the generated site is written.
+    .publish_dir = "publish",
+
+    // Base URL used when building RSS feed item links.
+    // Leave empty when developing locally.
+    .site_url = "https://yoursite.com",
+
+    // Any unknown keys become template variables available in all .mustache files
+    // via {{ key }} substitution.
+    .site_title = "Your Site",
+    .site_author = "Your Name",
 }

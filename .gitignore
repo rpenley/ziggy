@@ -5,6 +5,9 @@ zig-out/
 # Ziggy output
 publish/
 
+# Ziggy config (copy ziggy.zon.example to ziggy.zon and edit for your site)
+ziggy.zon
+
 # Prerequisites
 *.d
 
