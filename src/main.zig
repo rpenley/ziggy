@@ -1,5 +1,4 @@
 const std = @import("std");
-const zmd = @import("zmd");
 const types = @import("types.zig");
 const cli = @import("cli.zig");
 const parse = @import("parse.zig");
@@ -62,7 +61,7 @@ pub fn main() !void {
 
             const stem = entry.name[0 .. entry.name.len - 3];
             const body_md = try parse.parseFrontMatter(source, &vars);
-            const body_html = try zmd.parse(allocator, body_md, .{});
+            const body_html = try parse.renderMarkdownFragment(allocator, body_md);
             defer allocator.free(body_html);
 
             try vars.put("content", body_html);

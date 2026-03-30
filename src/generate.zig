@@ -1,5 +1,4 @@
 const std = @import("std");
-const zmd = @import("zmd");
 const types = @import("types.zig");
 const parse = @import("parse.zig");
 const render = @import("render.zig");
@@ -92,7 +91,7 @@ pub fn processContentType(
         const tags_html = try tagsToHtml(allocator, tags_csv);
         defer allocator.free(tags_html);
         try vars.put("tags_html", tags_html);
-        const body_html = try zmd.parse(allocator, body_md, .{});
+        const body_html = try parse.renderMarkdownFragment(allocator, body_md);
         defer allocator.free(body_html);
 
         try vars.put("content", body_html);

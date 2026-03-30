@@ -1,4 +1,13 @@
 const std = @import("std");
+const zmd = @import("zmd");
+
+const FragmentFormatters = zmd.Formatters{
+    .root = struct {
+        fn render(allocator: std.mem.Allocator, node: zmd.Node) ![]const u8 {
+            return allocator.dupe(u8, node.content);
+        }
+    }.render,
+};
 
 /// Strips YAML front matter (between leading `---` fences) from `source`,
 /// populates `vars` with the key/value pairs, and returns the markdown body.
@@ -19,6 +28,11 @@ pub fn parseFrontMatter(source: []const u8, vars: *std.StringHashMap([]const u8)
     }
 
     return rest[close_off + "\n---\n".len ..];
+}
+
+/// Renders markdown into an HTML fragment suitable for embedding inside a page template.
+pub fn renderMarkdownFragment(allocator: std.mem.Allocator, source: []const u8) ![]const u8 {
+    return zmd.parse(allocator, source, FragmentFormatters);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -77,4 +91,13 @@ test "parseFrontMatter unclosed fence" {
     const body = try parseFrontMatter(input, &vars);
     try std.testing.expectEqualStrings(input, body);
     try std.testing.expectEqual(@as(usize, 0), vars.count());
+}
+
+test "renderMarkdownFragment omits outer document" {
+    const allocator = std.testing.allocator;
+    const html = try renderMarkdownFragment(allocator, "# Hello");
+    defer allocator.free(html);
+
+    try std.testing.expect(std.mem.indexOf(u8, html, "<!DOCTYPE html>") == null);
+    try std.testing.expectEqualStrings("<h1>Hello</h1>\n", html);
 }
