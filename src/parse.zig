@@ -1,12 +1,13 @@
 const std = @import("std");
 const zmd = @import("zmd");
 
-const FragmentFormatters = zmd.Formatters{
+const fragment_config: zmd.Config = .{
     .root = struct {
-        fn render(allocator: std.mem.Allocator, node: zmd.Node) ![]const u8 {
-            return allocator.dupe(u8, node.content);
+        fn root(writer: *std.Io.Writer, _: zmd.Node) ![]const u8 {
+            _ = writer;
+            return "";
         }
-    }.render,
+    }.root,
 };
 
 /// Strips YAML front matter (between leading `---` fences) from `source`,
@@ -32,7 +33,7 @@ pub fn parseFrontMatter(source: []const u8, vars: *std.StringHashMap([]const u8)
 
 /// Renders markdown into an HTML fragment suitable for embedding inside a page template.
 pub fn renderMarkdownFragment(allocator: std.mem.Allocator, source: []const u8) ![]const u8 {
-    return zmd.parse(allocator, source, FragmentFormatters);
+    return zmd.parseAlloc(allocator, source, fragment_config);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

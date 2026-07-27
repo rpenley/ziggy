@@ -6,18 +6,16 @@ const max_config_bytes = types.max_config_bytes;
 
 /// Looks for ziggy.zon in CWD, then in $HOME. Parses `.key = "value"` lines:
 /// known keys update the corresponding Config field; unknown keys are stored in site_vars.
-pub fn loadZonConfig(allocator: std.mem.Allocator, config: *Config) !void {
+pub fn loadZonConfig(allocator: std.mem.Allocator, io: std.Io, home: ?[]const u8, config: *Config) !void {
     const data = blk: {
-        if (std.fs.cwd().readFileAlloc(allocator, "ziggy.zon", max_config_bytes)) |d| {
+        if (std.Io.Dir.cwd().readFileAlloc(io, "ziggy.zon", allocator, .limited(max_config_bytes))) |d| {
             break :blk d;
         } else |_| {}
 
-        const home = std.posix.getenv("HOME") orelse return;
-        var path_buf: [1024]u8 = undefined;
-        const home_path = try std.fmt.bufPrint(&path_buf, "{s}/ziggy.zon", .{home});
-        if (std.fs.openFileAbsolute(home_path, .{})) |file| {
-            defer file.close();
-            break :blk try file.readToEndAlloc(allocator, max_config_bytes);
+        var home_dir = std.Io.Dir.openDirAbsolute(io, home orelse return, .{}) catch return;
+        defer home_dir.close(io);
+        if (home_dir.readFileAlloc(io, "ziggy.zon", allocator, .limited(max_config_bytes))) |d| {
+            break :blk d;
         } else |_| {}
 
         return;
@@ -54,14 +52,14 @@ fn nextArg(args: anytype, flag: []const u8) ?[]const u8 {
 }
 
 /// Parses CLI args into config. Returns false if the program should exit (e.g. --help).
-pub fn parseArgs(allocator: std.mem.Allocator, config: *Config) !bool {
-    var args = try std.process.argsWithAllocator(allocator);
+pub fn parseArgs(allocator: std.mem.Allocator, io: std.Io, process_args: std.process.Args, config: *Config) !bool {
+    var args = try std.process.Args.Iterator.initAllocator(process_args, allocator);
     defer args.deinit();
     _ = args.next(); // skip executable name
 
     while (args.next()) |arg| {
         if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
-            printHelp();
+            printHelp(io);
             return false;
         } else if (std.mem.eql(u8, arg, "--content")) {
             config.content_dir = try allocator.dupe(u8, nextArg(&args, arg) orelse return false);
@@ -76,7 +74,7 @@ pub fn parseArgs(allocator: std.mem.Allocator, config: *Config) !bool {
             config.clean = true;
         } else {
             std.debug.print("error: unknown argument '{s}'\n\n", .{arg});
-            printHelp();
+            printHelp(io);
             return false;
         }
     }
@@ -84,7 +82,7 @@ pub fn parseArgs(allocator: std.mem.Allocator, config: *Config) !bool {
     return true;
 }
 
-pub fn printHelp() void {
+pub fn printHelp(io: std.Io) void {
     const help =
         \\ziggy - static site generator
         \\
@@ -113,7 +111,7 @@ pub fn printHelp() void {
         \\  }
         \\
     ;
-    std.fs.File.stdout().writeAll(help) catch {};
+    std.Io.File.stdout().writeStreamingAll(io, help) catch {};
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -123,20 +121,23 @@ test "loadZonConfig reads ziggy.zon" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
+    const io = std.testing.io;
     var original_cwd_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const original_cwd = try std.fs.cwd().realpath(".", &original_cwd_buf);
+    const original_cwd_len = try std.process.currentPath(io, &original_cwd_buf);
+    const original_cwd = original_cwd_buf[0..original_cwd_len];
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const file = try tmp.dir.createFile("ziggy.zon", .{});
-    try file.writeAll(".{\n  .content_dir = \"my_content\",\n  .template = \"fancy\",\n}\n");
-    file.close();
+    const file = try tmp.dir.createFile(io, "ziggy.zon", .{});
+    try file.writeStreamingAll(io, ".{\n  .content_dir = \"my_content\",\n  .template = \"fancy\",\n}\n");
+    file.close(io);
 
     var tmp_path_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const tmp_path = try tmp.dir.realpath(".", &tmp_path_buf);
-    try std.posix.chdir(tmp_path);
-    defer std.posix.chdir(original_cwd) catch {};
+    const tmp_path_len = try tmp.dir.realPath(io, &tmp_path_buf);
+    const tmp_path = tmp_path_buf[0..tmp_path_len];
+    try std.process.setCurrentPath(io, tmp_path);
+    defer std.process.setCurrentPath(io, original_cwd) catch {};
 
     var config = Config{
         .content_dir = "content",
@@ -146,7 +147,7 @@ test "loadZonConfig reads ziggy.zon" {
         .clean = false,
         .site_vars = std.StringHashMap([]const u8).init(allocator),
     };
-    try loadZonConfig(allocator, &config);
+    try loadZonConfig(allocator, io, null, &config);
 
     try std.testing.expectEqualStrings("my_content", config.content_dir);
     try std.testing.expectEqualStrings("templates/fancy", config.template_dir);
@@ -158,8 +159,10 @@ test "loadZonConfig ignores comments and blank lines" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
+    const io = std.testing.io;
     var original_cwd_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const original_cwd = try std.fs.cwd().realpath(".", &original_cwd_buf);
+    const original_cwd_len = try std.process.currentPath(io, &original_cwd_buf);
+    const original_cwd = original_cwd_buf[0..original_cwd_len];
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -173,14 +176,15 @@ test "loadZonConfig ignores comments and blank lines" {
         \\    .publish_dir = "out",
         \\}
     ;
-    const file = try tmp.dir.createFile("ziggy.zon", .{});
-    try file.writeAll(content);
-    file.close();
+    const file = try tmp.dir.createFile(io, "ziggy.zon", .{});
+    try file.writeStreamingAll(io, content);
+    file.close(io);
 
     var tmp_path_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const tmp_path = try tmp.dir.realpath(".", &tmp_path_buf);
-    try std.posix.chdir(tmp_path);
-    defer std.posix.chdir(original_cwd) catch {};
+    const tmp_path_len = try tmp.dir.realPath(io, &tmp_path_buf);
+    const tmp_path = tmp_path_buf[0..tmp_path_len];
+    try std.process.setCurrentPath(io, tmp_path);
+    defer std.process.setCurrentPath(io, original_cwd) catch {};
 
     var config = Config{
         .content_dir = "content",
@@ -190,7 +194,7 @@ test "loadZonConfig ignores comments and blank lines" {
         .clean = false,
         .site_vars = std.StringHashMap([]const u8).init(allocator),
     };
-    try loadZonConfig(allocator, &config);
+    try loadZonConfig(allocator, io, null, &config);
 
     try std.testing.expectEqualStrings("src", config.content_dir);
     try std.testing.expectEqualStrings("out", config.publish_dir);
@@ -202,20 +206,23 @@ test "loadZonConfig template key resolves to templates/ path" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
+    const io = std.testing.io;
     var original_cwd_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const original_cwd = try std.fs.cwd().realpath(".", &original_cwd_buf);
+    const original_cwd_len = try std.process.currentPath(io, &original_cwd_buf);
+    const original_cwd = original_cwd_buf[0..original_cwd_len];
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const file = try tmp.dir.createFile("ziggy.zon", .{});
-    try file.writeAll(".{\n    .template = \"default\",\n}\n");
-    file.close();
+    const file = try tmp.dir.createFile(io, "ziggy.zon", .{});
+    try file.writeStreamingAll(io, ".{\n    .template = \"default\",\n}\n");
+    file.close(io);
 
     var tmp_path_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const tmp_path = try tmp.dir.realpath(".", &tmp_path_buf);
-    try std.posix.chdir(tmp_path);
-    defer std.posix.chdir(original_cwd) catch {};
+    const tmp_path_len = try tmp.dir.realPath(io, &tmp_path_buf);
+    const tmp_path = tmp_path_buf[0..tmp_path_len];
+    try std.process.setCurrentPath(io, tmp_path);
+    defer std.process.setCurrentPath(io, original_cwd) catch {};
 
     var config = Config{
         .content_dir = "content",
@@ -225,7 +232,7 @@ test "loadZonConfig template key resolves to templates/ path" {
         .clean = false,
         .site_vars = std.StringHashMap([]const u8).init(allocator),
     };
-    try loadZonConfig(allocator, &config);
+    try loadZonConfig(allocator, io, null, &config);
 
     try std.testing.expectEqualStrings("templates/default", config.template_dir);
 }
@@ -235,20 +242,23 @@ test "loadZonConfig site_vars" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
+    const io = std.testing.io;
     var original_cwd_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const original_cwd = try std.fs.cwd().realpath(".", &original_cwd_buf);
+    const original_cwd_len = try std.process.currentPath(io, &original_cwd_buf);
+    const original_cwd = original_cwd_buf[0..original_cwd_len];
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const file = try tmp.dir.createFile("ziggy.zon", .{});
-    try file.writeAll(".{\n  .site_title = \"My Blog\",\n  .site_author = \"Alice\",\n}\n");
-    file.close();
+    const file = try tmp.dir.createFile(io, "ziggy.zon", .{});
+    try file.writeStreamingAll(io, ".{\n  .site_title = \"My Blog\",\n  .site_author = \"Alice\",\n}\n");
+    file.close(io);
 
     var tmp_path_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const tmp_path = try tmp.dir.realpath(".", &tmp_path_buf);
-    try std.posix.chdir(tmp_path);
-    defer std.posix.chdir(original_cwd) catch {};
+    const tmp_path_len = try tmp.dir.realPath(io, &tmp_path_buf);
+    const tmp_path = tmp_path_buf[0..tmp_path_len];
+    try std.process.setCurrentPath(io, tmp_path);
+    defer std.process.setCurrentPath(io, original_cwd) catch {};
 
     var config = Config{
         .content_dir = "content",
@@ -258,7 +268,7 @@ test "loadZonConfig site_vars" {
         .clean = false,
         .site_vars = std.StringHashMap([]const u8).init(allocator),
     };
-    try loadZonConfig(allocator, &config);
+    try loadZonConfig(allocator, io, null, &config);
 
     try std.testing.expectEqualStrings("My Blog", config.site_vars.get("site_title").?);
     try std.testing.expectEqualStrings("Alice", config.site_vars.get("site_author").?);

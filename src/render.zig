@@ -44,6 +44,7 @@ pub fn renderMustache(
 /// Does not recurse — partials may not themselves contain partial tags.
 pub fn expandPartials(
     allocator: std.mem.Allocator,
+    io: std.Io,
     config: *const Config,
     template: []const u8,
 ) ![]u8 {
@@ -83,7 +84,7 @@ pub fn expandPartials(
             config.template_dir, name,
         });
 
-        if (std.fs.cwd().readFileAlloc(allocator, partial_path, max_content_bytes)) |partial_content| {
+        if (std.Io.Dir.cwd().readFileAlloc(io, partial_path, allocator, .limited(max_content_bytes))) |partial_content| {
             defer allocator.free(partial_content);
             try out.appendSlice(allocator, partial_content);
         } else |_| {
@@ -98,31 +99,31 @@ pub fn expandPartials(
 
 /// Tries {template_dir}/{stem}.mustache, then {template_dir}/default.mustache.
 /// Partials (`{{> name }}`) are expanded before returning.
-pub fn loadTemplate(allocator: std.mem.Allocator, config: *const Config, stem: []const u8) ![]const u8 {
+pub fn loadTemplate(allocator: std.mem.Allocator, io: std.Io, config: *const Config, stem: []const u8) ![]const u8 {
     var path_buf: [1024]u8 = undefined;
 
     const raw = blk: {
         const specific = try std.fmt.bufPrint(&path_buf, "{s}/{s}.mustache", .{ config.template_dir, stem });
-        if (std.fs.cwd().readFileAlloc(allocator, specific, max_content_bytes)) |content| {
+        if (std.Io.Dir.cwd().readFileAlloc(io, specific, allocator, .limited(max_content_bytes))) |content| {
             break :blk content;
         } else |_| {}
 
         const fallback = try std.fmt.bufPrint(&path_buf, "{s}/default.mustache", .{config.template_dir});
-        break :blk try std.fs.cwd().readFileAlloc(allocator, fallback, max_content_bytes);
+        break :blk try std.Io.Dir.cwd().readFileAlloc(io, fallback, allocator, .limited(max_content_bytes));
     };
     defer allocator.free(raw);
 
-    return expandPartials(allocator, config, raw);
+    return expandPartials(allocator, io, config, raw);
 }
 
 /// Loads `{template_dir}/partials/{name}.mustache`.
 /// Returns error.FileNotFound if it doesn't exist.
-pub fn loadPartial(allocator: std.mem.Allocator, config: *const Config, name: []const u8) ![]const u8 {
+pub fn loadPartial(allocator: std.mem.Allocator, io: std.Io, config: *const Config, name: []const u8) ![]const u8 {
     var path_buf: [1024]u8 = undefined;
     const path = try std.fmt.bufPrint(&path_buf, "{s}/partials/{s}.mustache", .{
         config.template_dir, name,
     });
-    return std.fs.cwd().readFileAlloc(allocator, path, max_content_bytes);
+    return std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(max_content_bytes));
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

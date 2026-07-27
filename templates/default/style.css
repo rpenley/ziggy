@@ -186,13 +186,18 @@ main {
 }
 
 h1 { font-size: 2rem;   font-weight: 700; color: var(--orange); margin-bottom: 0.4rem; }
-h2 { font-size: 1.5rem; font-weight: 600; color: var(--yellow); margin-top: 2rem; margin-bottom: 0.4rem; }
-h3 { font-size: 1.1rem; font-weight: 600; color: var(--green);  margin-top: 1.5rem; margin-bottom: 0.3rem; }
+h2 { font-size: 1.5rem; font-weight: 600; color: var(--fg); margin-top: 2rem; margin-bottom: 0.4rem; }
+h3 { font-size: 1.1rem; font-weight: 600; color: var(--fg);  margin-top: 1.5rem; margin-bottom: 0.3rem; }
 h4, h5, h6 { color: var(--fg2); margin-top: 1rem; margin-bottom: 0.3rem; }
+
+p, li, blockquote {
+	font-family: Charter, "Iowan Old Style", Georgia, "Times New Roman", serif;
+	font-size: 1.125rem;
+}
 
 p { margin-bottom: 1rem; color: var(--fg2); }
 strong { color: var(--fg); font-weight: 700; }
-em { color: var(--fg3); font-style: italic; }
+em { font-style: italic; }
 
 code {
 	background: var(--bg1);
@@ -233,6 +238,26 @@ hr {
 	margin: 2rem 0;
 }
 
+main img {
+	max-width: 100%;
+	height: auto;
+	border-radius: 3px;
+	margin-bottom: 1rem;
+}
+
+table {
+	width: 100%;
+	border-collapse: collapse;
+	margin-bottom: 1rem;
+	font-family: Charter, "Iowan Old Style", Georgia, "Times New Roman", serif;
+}
+th, td {
+	padding: 0.4em 0.8em;
+	border-bottom: 1px solid var(--bg2);
+	text-align: left;
+}
+th { color: var(--fg); }
+
 /* ── tags ── */
 .tags {
 	display: flex;
@@ -252,7 +277,7 @@ hr {
 
 /* ── post meta ── */
 .post-meta {
-	color: var(--bg4);
+	color: var(--fg3);
 	font-size: 0.875rem;
 	font-style: italic;
 	margin-bottom: 1.5rem;
@@ -287,7 +312,7 @@ hr {
 .post-item-header a:hover { color: var(--orange); }
 
 .post-date {
-	color: var(--bg4);
+	color: var(--fg3);
 	font-size: 0.875rem;
 	font-style: italic;
 	display: block;
@@ -308,10 +333,10 @@ footer {
 	max-width: 768px;
 	margin: 0 auto;
 	padding: 1.5rem 1.5rem;
-	color: var(--bg4);
+	color: var(--fg3);
 	font-size: 0.875rem;
 	border-top: 1px solid var(--bg2);
 	text-align: right;
 }
-footer a { color: var(--bg4); }
-footer a:hover { color: var(--fg3); text-decoration: none; }
+footer a { color: var(--fg3); }
+footer a:hover { color: var(--fg2); text-decoration: none; }

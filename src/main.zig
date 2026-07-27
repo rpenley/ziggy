@@ -8,10 +8,9 @@ const generate = @import("generate.zig");
 const Config = types.Config;
 const max_content_bytes = types.max_content_bytes;
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+    const allocator = std.heap.page_allocator;
+    const io = init.io;
 
     // Simple arena that we will free later
     var config_arena = std.heap.ArenaAllocator.init(allocator);
@@ -26,30 +25,30 @@ pub fn main() !void {
         .clean = false,
         .site_vars = std.StringHashMap([]const u8).init(config_allocator),
     };
-    try cli.loadZonConfig(config_allocator, &config);
-    if (!try cli.parseArgs(config_allocator, &config)) return;
+    try cli.loadZonConfig(config_allocator, io, init.environ_map.get("HOME"), &config);
+    if (!try cli.parseArgs(config_allocator, io, init.minimal.args, &config)) return;
 
     if (config.clean) {
-        std.fs.cwd().deleteTree(config.publish_dir) catch |err| {
+        std.Io.Dir.cwd().deleteTree(io, config.publish_dir) catch |err| {
             if (err != error.FileNotFound) return err;
         };
-        try std.fs.File.stdout().writeAll("Cleaned   publish dir\n");
+        try std.Io.File.stdout().writeStreamingAll(io, "Cleaned   publish dir\n");
     }
-    try std.fs.cwd().makePath(config.publish_dir);
+    try std.Io.Dir.cwd().createDirPath(io, config.publish_dir);
 
     // Top-level content pages (files directly in content/).
     {
-        var content_dir = try std.fs.cwd().openDir(config.content_dir, .{ .iterate = true });
-        defer content_dir.close();
+        var content_dir = try std.Io.Dir.cwd().openDir(io, config.content_dir, .{ .iterate = true });
+        defer content_dir.close(io);
 
         var path_buf: [1024]u8 = undefined;
         var line_buf: [1200]u8 = undefined;
         var iterator = content_dir.iterate();
-        while (try iterator.next()) |entry| {
+        while (try iterator.next(io)) |entry| {
             if (entry.kind != .file) continue;
             if (!std.mem.endsWith(u8, entry.name, ".md")) continue;
 
-            const source = try content_dir.readFileAlloc(allocator, entry.name, max_content_bytes);
+            const source = try content_dir.readFileAlloc(io, entry.name, allocator, .limited(max_content_bytes));
             defer allocator.free(source);
 
             var vars = std.StringHashMap([]const u8).init(allocator);
@@ -66,24 +65,24 @@ pub fn main() !void {
 
             try vars.put("content", body_html);
 
-            const tmpl = try render.loadTemplate(allocator, &config, stem);
+            const tmpl = try render.loadTemplate(allocator, io, &config, stem);
             defer allocator.free(tmpl);
 
             const output = try render.renderMustache(allocator, tmpl, &vars);
             defer allocator.free(output);
 
             const out_path = try std.fmt.bufPrint(&path_buf, "{s}/{s}.html", .{ config.publish_dir, stem });
-            const out_file = try std.fs.cwd().createFile(out_path, .{});
-            defer out_file.close();
-            try out_file.writeAll(output);
+            const out_file = try std.Io.Dir.cwd().createFile(io, out_path, .{});
+            defer out_file.close(io);
+            try out_file.writeStreamingAll(io, output);
 
             const line = try std.fmt.bufPrint(&line_buf, "Generated {s}\n", .{out_path});
-            try std.fs.File.stdout().writeAll(line);
+            try std.Io.File.stdout().writeStreamingAll(io, line);
         }
     }
 
     // Content type subdirectories — one per subdirectory of content/.
-    var content_types = try generate.discoverContentTypes(allocator, &config);
+    var content_types = try generate.discoverContentTypes(allocator, io, &config);
     defer {
         for (content_types.items) |ct| allocator.free(ct);
         content_types.deinit(allocator);
@@ -110,9 +109,9 @@ pub fn main() !void {
     for (content_types.items) |ct| {
         var type_pub_buf: [1024]u8 = undefined;
         const type_pub = try std.fmt.bufPrint(&type_pub_buf, "{s}/{s}", .{ config.publish_dir, ct });
-        try std.fs.cwd().makePath(type_pub);
+        try std.Io.Dir.cwd().createDirPath(io, type_pub);
 
-        var items = try generate.processContentType(allocator, &config, ct, &tag_map);
+        var items = try generate.processContentType(allocator, io, &config, ct, &tag_map);
         defer {
             for (items.items) |item| {
                 allocator.free(item.title);
@@ -126,12 +125,12 @@ pub fn main() !void {
         }
 
         generate.sortItemsByDate(items.items);
-        try generate.generateTypeIndex(allocator, &config, ct, items.items);
-        try generate.generateRssFeed(allocator, &config, ct, items.items);
+        try generate.generateTypeIndex(allocator, io, &config, ct, items.items);
+        try generate.generateRssFeed(allocator, io, &config, ct, items.items);
     }
 
-    try generate.generateTagPages(allocator, &config, &tag_map);
-    try generate.copyStaticFiles(allocator, &config);
+    try generate.generateTagPages(allocator, io, &config, &tag_map);
+    try generate.copyStaticFiles(allocator, io, &config);
 }
 
 // Pull in tests from sub-modules so `zig build test` discovers them.

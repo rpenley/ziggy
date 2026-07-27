@@ -10,18 +10,19 @@ const max_static_bytes = types.max_static_bytes;
 
 pub fn discoverContentTypes(
     allocator: std.mem.Allocator,
+    io: std.Io,
     config: *const Config,
 ) !std.ArrayList([]const u8) {
     var result: std.ArrayList([]const u8) = .empty;
 
-    var content_dir = std.fs.cwd().openDir(config.content_dir, .{ .iterate = true }) catch |err| {
+    var content_dir = std.Io.Dir.cwd().openDir(io, config.content_dir, .{ .iterate = true }) catch |err| {
         if (err == error.FileNotFound) return result;
         return err;
     };
-    defer content_dir.close();
+    defer content_dir.close(io);
 
     var iterator = content_dir.iterate();
-    while (try iterator.next()) |entry| {
+    while (try iterator.next(io)) |entry| {
         if (entry.kind != .directory) continue;
         try result.append(allocator, try allocator.dupe(u8, entry.name));
     }
@@ -52,6 +53,7 @@ fn tagsToHtml(allocator: std.mem.Allocator, tags_csv: []const u8) ![]const u8 {
 
 pub fn processContentType(
     allocator: std.mem.Allocator,
+    io: std.Io,
     config: *const Config,
     content_type: []const u8,
     tag_map: *std.StringHashMap(std.ArrayList(ListItem)),
@@ -61,22 +63,22 @@ pub fn processContentType(
     var path_buf: [1024]u8 = undefined;
     const type_content = try std.fmt.bufPrint(&path_buf, "{s}/{s}", .{ config.content_dir, content_type });
 
-    var type_dir = std.fs.cwd().openDir(type_content, .{ .iterate = true }) catch |err| {
+    var type_dir = std.Io.Dir.cwd().openDir(io, type_content, .{ .iterate = true }) catch |err| {
         if (err == error.FileNotFound) return items;
         return err;
     };
-    defer type_dir.close();
+    defer type_dir.close(io);
 
     // Template stem: {type}-post → tries {template_dir}/{type}-post.mustache then {template_dir}/default.mustache
     var tmpl_stem_buf: [256]u8 = undefined;
     const tmpl_stem = try std.fmt.bufPrint(&tmpl_stem_buf, "{s}-post", .{content_type});
 
     var iterator = type_dir.iterate();
-    while (try iterator.next()) |entry| {
+    while (try iterator.next(io)) |entry| {
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.name, ".md")) continue;
 
-        const source = try type_dir.readFileAlloc(allocator, entry.name, max_content_bytes);
+        const source = try type_dir.readFileAlloc(io, entry.name, allocator, .limited(max_content_bytes));
         defer allocator.free(source);
 
         var vars = std.StringHashMap([]const u8).init(allocator);
@@ -96,7 +98,7 @@ pub fn processContentType(
 
         try vars.put("content", body_html);
 
-        const tmpl = try render.loadTemplate(allocator, config, tmpl_stem);
+        const tmpl = try render.loadTemplate(allocator, io, config, tmpl_stem);
         defer allocator.free(tmpl);
 
         const output = try render.renderMustache(allocator, tmpl, &vars);
@@ -105,13 +107,13 @@ pub fn processContentType(
         const stem = entry.name[0 .. entry.name.len - 3];
         var out_buf: [1024]u8 = undefined;
         const out_path = try std.fmt.bufPrint(&out_buf, "{s}/{s}/{s}.html", .{ config.publish_dir, content_type, stem });
-        const out_file = try std.fs.cwd().createFile(out_path, .{});
-        defer out_file.close();
-        try out_file.writeAll(output);
+        const out_file = try std.Io.Dir.cwd().createFile(io, out_path, .{});
+        defer out_file.close(io);
+        try out_file.writeStreamingAll(io, output);
 
         var line_buf: [1200]u8 = undefined;
         const line = try std.fmt.bufPrint(&line_buf, "Generated {s}\n", .{out_path});
-        try std.fs.File.stdout().writeAll(line);
+        try std.Io.File.stdout().writeStreamingAll(io, line);
 
         try items.append(allocator, .{
             .title = try allocator.dupe(u8, vars.get("title") orelse ""),
@@ -161,6 +163,7 @@ pub fn sortItemsByDate(items: []ListItem) void {
 
 pub fn generateTypeIndex(
     allocator: std.mem.Allocator,
+    io: std.Io,
     config: *const Config,
     content_type: []const u8,
     items: []const ListItem,
@@ -171,7 +174,7 @@ pub fn generateTypeIndex(
     if (items.len == 0) {
         try content.appendSlice(allocator, "<p>No posts yet.</p>\n");
     } else {
-        const list_item_partial = render.loadPartial(allocator, config, "list-item") catch "<li>{{ title }}</li>\n";
+        const list_item_partial = render.loadPartial(allocator, io, config, "list-item") catch "<li>{{ title }}</li>\n";
         defer allocator.free(list_item_partial);
 
         try content.appendSlice(allocator, "<ul class=\"post-list\">\n");
@@ -206,7 +209,7 @@ pub fn generateTypeIndex(
 
     var tmpl_stem_buf: [256]u8 = undefined;
     const tmpl_stem = try std.fmt.bufPrint(&tmpl_stem_buf, "{s}-index", .{content_type});
-    const tmpl = try render.loadTemplate(allocator, config, tmpl_stem);
+    const tmpl = try render.loadTemplate(allocator, io, config, tmpl_stem);
     defer allocator.free(tmpl);
 
     const output = try render.renderMustache(allocator, tmpl, &vars);
@@ -214,25 +217,26 @@ pub fn generateTypeIndex(
 
     var path_buf: [1024]u8 = undefined;
     const out_path = try std.fmt.bufPrint(&path_buf, "{s}/{s}.html", .{ config.publish_dir, content_type });
-    const out_file = try std.fs.cwd().createFile(out_path, .{});
-    defer out_file.close();
-    try out_file.writeAll(output);
+    const out_file = try std.Io.Dir.cwd().createFile(io, out_path, .{});
+    defer out_file.close(io);
+    try out_file.writeStreamingAll(io, output);
 
     var line_buf: [1200]u8 = undefined;
     const line = try std.fmt.bufPrint(&line_buf, "Generated {s}\n", .{out_path});
-    try std.fs.File.stdout().writeAll(line);
+    try std.Io.File.stdout().writeStreamingAll(io, line);
 }
 
 pub fn generateTagPages(
     allocator: std.mem.Allocator,
+    io: std.Io,
     config: *const Config,
     tag_map: *const std.StringHashMap(std.ArrayList(ListItem)),
 ) !void {
     var path_buf: [1024]u8 = undefined;
     const tag_dir = try std.fmt.bufPrint(&path_buf, "{s}/tag", .{config.publish_dir});
-    try std.fs.cwd().makePath(tag_dir);
+    try std.Io.Dir.cwd().createDirPath(io, tag_dir);
 
-    const list_item_partial = render.loadPartial(allocator, config, "list-item") catch try allocator.dupe(u8, "<li>{{ title }}</li>\n");
+    const list_item_partial = render.loadPartial(allocator, io, config, "list-item") catch try allocator.dupe(u8, "<li>{{ title }}</li>\n");
     defer allocator.free(list_item_partial);
 
     var map_iter = tag_map.iterator();
@@ -278,7 +282,7 @@ pub fn generateTagPages(
         try vars.put("description", tag);
         try vars.put("content", content.items);
 
-        const tmpl = try render.loadTemplate(allocator, config, "tag");
+        const tmpl = try render.loadTemplate(allocator, io, config, "tag");
         defer allocator.free(tmpl);
 
         const output = try render.renderMustache(allocator, tmpl, &vars);
@@ -286,13 +290,13 @@ pub fn generateTagPages(
 
         var out_buf: [1024]u8 = undefined;
         const out_path = try std.fmt.bufPrint(&out_buf, "{s}/tag/{s}.html", .{ config.publish_dir, tag });
-        const out_file = try std.fs.cwd().createFile(out_path, .{});
-        defer out_file.close();
-        try out_file.writeAll(output);
+        const out_file = try std.Io.Dir.cwd().createFile(io, out_path, .{});
+        defer out_file.close(io);
+        try out_file.writeStreamingAll(io, output);
 
         var line_buf: [1200]u8 = undefined;
         const line = try std.fmt.bufPrint(&line_buf, "Generated {s}\n", .{out_path});
-        try std.fs.File.stdout().writeAll(line);
+        try std.Io.File.stdout().writeStreamingAll(io, line);
     }
 }
 
@@ -327,6 +331,7 @@ fn dateToRfc822(allocator: std.mem.Allocator, date: []const u8) ![]u8 {
 
 pub fn generateRssFeed(
     allocator: std.mem.Allocator,
+    io: std.Io,
     config: *const Config,
     content_type: []const u8,
     items: []const ListItem,
@@ -392,65 +397,66 @@ pub fn generateRssFeed(
 
     var path_buf: [1024]u8 = undefined;
     const out_path = try std.fmt.bufPrint(&path_buf, "{s}/{s}.xml", .{ config.publish_dir, content_type });
-    const out_file = try std.fs.cwd().createFile(out_path, .{});
-    defer out_file.close();
-    try out_file.writeAll(xml.items);
+    const out_file = try std.Io.Dir.cwd().createFile(io, out_path, .{});
+    defer out_file.close(io);
+    try out_file.writeStreamingAll(io, xml.items);
 
     var line_buf: [1200]u8 = undefined;
     const line = try std.fmt.bufPrint(&line_buf, "Generated {s}\n", .{out_path});
-    try std.fs.File.stdout().writeAll(line);
+    try std.Io.File.stdout().writeStreamingAll(io, line);
 }
 
-pub fn copyStaticFiles(allocator: std.mem.Allocator, config: *const Config) !void {
-    var source_dir = std.fs.cwd().openDir(config.template_dir, .{ .iterate = true }) catch |err| {
+pub fn copyStaticFiles(allocator: std.mem.Allocator, io: std.Io, config: *const Config) !void {
+    var source_dir = std.Io.Dir.cwd().openDir(io, config.template_dir, .{ .iterate = true }) catch |err| {
         if (err == error.FileNotFound) return;
         return err;
     };
-    defer source_dir.close();
+    defer source_dir.close(io);
 
-    var publish_dir = try std.fs.cwd().openDir(config.publish_dir, .{});
-    defer publish_dir.close();
+    var publish_dir = try std.Io.Dir.cwd().openDir(io, config.publish_dir, .{});
+    defer publish_dir.close(io);
 
-    try copyDirRecursive(allocator, source_dir, publish_dir, config.publish_dir, "");
+    try copyDirRecursive(allocator, io, source_dir, publish_dir, config.publish_dir, "");
 }
 
 pub fn copyDirRecursive(
     allocator: std.mem.Allocator,
-    source_dir: std.fs.Dir,
-    dest_dir: std.fs.Dir,
+    io: std.Io,
+    source_dir: std.Io.Dir,
+    dest_dir: std.Io.Dir,
     publish_base: []const u8,
     rel_prefix: []const u8,
 ) !void {
     var iterator = source_dir.iterate();
-    while (try iterator.next()) |entry| {
+    while (try iterator.next(io)) |entry| {
         if (entry.kind == .file) {
             if (std.mem.endsWith(u8, entry.name, ".mustache")) continue;
 
-            const data = try source_dir.readFileAlloc(allocator, entry.name, max_static_bytes);
+            const data = try source_dir.readFileAlloc(io, entry.name, allocator, .limited(max_static_bytes));
             defer allocator.free(data);
 
-            const out_file = try dest_dir.createFile(entry.name, .{});
-            defer out_file.close();
-            try out_file.writeAll(data);
+            const out_file = try dest_dir.createFile(io, entry.name, .{});
+            defer out_file.close(io);
+            try out_file.writeStreamingAll(io, data);
 
             var path_buf: [1024]u8 = undefined;
             const out_path = try std.fmt.bufPrint(&path_buf, "{s}/{s}{s}", .{ publish_base, rel_prefix, entry.name });
             var line_buf: [1200]u8 = undefined;
             const line = try std.fmt.bufPrint(&line_buf, "Copied    {s}\n", .{out_path});
-            try std.fs.File.stdout().writeAll(line);
+            try std.Io.File.stdout().writeStreamingAll(io, line);
         } else if (entry.kind == .directory) {
             if (std.mem.eql(u8, entry.name, "partials")) continue;
 
-            try dest_dir.makePath(entry.name);
+            try dest_dir.createDirPath(io, entry.name);
 
-            var sub_source = try source_dir.openDir(entry.name, .{ .iterate = true });
-            defer sub_source.close();
-            var sub_dest = try dest_dir.openDir(entry.name, .{});
-            defer sub_dest.close();
+            var sub_source = try source_dir.openDir(io, entry.name, .{ .iterate = true });
+            defer sub_source.close(io);
+            var sub_dest = try dest_dir.openDir(io, entry.name, .{});
+            defer sub_dest.close(io);
 
             var new_prefix_buf: [512]u8 = undefined;
             const new_prefix = try std.fmt.bufPrint(&new_prefix_buf, "{s}{s}/", .{ rel_prefix, entry.name });
-            try copyDirRecursive(allocator, sub_source, sub_dest, publish_base, new_prefix);
+            try copyDirRecursive(allocator, io, sub_source, sub_dest, publish_base, new_prefix);
         }
     }
 }
