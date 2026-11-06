@@ -3,6 +3,8 @@ Ziggy is a static site generator (SSG) written in Zig using Mustache templates a
 
 ## Build
 
+Requires Zig 0.17.0 or newer.
+
 ```sh
 zig build          # compile
 zig build run      # compile and run

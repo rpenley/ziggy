@@ -2,10 +2,11 @@
     .name = .ziggy,
     .fingerprint = 0x7d935ea75ea29510,
     .version = "0.1.0",
+    .minimum_zig_version = "0.17.0",
     .dependencies = .{
         .zmd = .{
-            .url = "https://github.com/jetzig-framework/zmd/archive/3a23328a575357e6c55e2c50a4e41f11776e4f18.tar.gz",
-            .hash = "zmd-0.2.0-H8YV7VfEAACoEBk4Yy0feU3HmoIE-7oqjuiGadj3t1mv",
+            .url = "https://github.com/jetzig-framework/zmd/archive/0489c773ab804e0bf938f8fbedf47ca725996862.tar.gz",
+            .hash = "zmd-0.2.0-H8YV7ZHEAACh4-oDJjDERKFEH-J_CZj24goNfTDWGu14",
         },
     },
     .paths = .{"."},
